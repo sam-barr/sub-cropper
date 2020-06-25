@@ -295,6 +295,8 @@ void sub_image_find_box(struct sub_image *image, struct sub_box *box,
         sub_stack_push(&stack, &stack_size, x, y);
 
 #define get_state(p) (pixel_states[(p).x - left][(p).y - top])
+#define valid_x(x) ((x) >= left && (x) < right && (x) < image->width)
+#define valid_y(y) ((y) >= top && (y) < bottom && (y) < image->height)
 
         left = (x > MAX_BOX_RADIUS) ? x - MAX_BOX_RADIUS : 0;
         right = min(image->width, x + MAX_BOX_RADIUS);
@@ -303,13 +305,13 @@ void sub_image_find_box(struct sub_image *image, struct sub_box *box,
 
         box->left = box->right = x;
         box->top = box->bottom = y;
+        if(!valid_x(x) || !valid_y(y)) return;
 
         while (stack_size > 0) {
                 struct sub_point point;
                 struct sub_pixel c;
 
                 point = sub_stack_pop(&stack, &stack_size);
-                sub_image_get_pixel(image, 0, 0);
                 c = sub_image_get_pixel(image, point.x, point.y);
                 if (get_state(point) != SUB_NONE) {
                         continue;
@@ -324,18 +326,19 @@ void sub_image_find_box(struct sub_image *image, struct sub_box *box,
                 box->top = min(box->top, point.y);
                 box->bottom = max(box->bottom, point.y);
 
-                if (point.x - 1 >= left)
+                if (valid_x(point.x - 1) && valid_y(point.y))
                         sub_stack_push(&stack, &stack_size, point.x - 1, point.y);
-                if (point.x + 1 < right)
+                if (valid_x(point.x + 1) && valid_y(point.y))
                         sub_stack_push(&stack, &stack_size, point.x + 1, point.y);
-                if (point.y - 1 >= top)
+                if (valid_x(point.x) && valid_y(point.y - 1))
                         sub_stack_push(&stack, &stack_size, point.x, point.y - 1);
-                if (point.y + 1 < bottom)
+                if (valid_x(point.x) && valid_y(point.y + 1))
                         sub_stack_push(&stack, &stack_size, point.x, point.y + 1);
         }
 
-
 #undef get_state
+#undef valid_x
+#undef valid_y
 }
 
 void sub_load_image(struct sub_image *image, char *file_name) {
@@ -352,40 +355,58 @@ void sub_save_image_cropped(struct sub_image *image, struct sub_box *box, char *
         sub_png_writer_destroy(&writer);
 }
 
-int main() {
-        struct sub_image im;
-        struct sub_box box, crop;
+void sub_scan_image(struct sub_image *image, struct sub_box *crop, size_t y) {
         size_t i;
+        for(i = MAX_BOX_RADIUS; i < image->width - MAX_BOX_RADIUS; i++) {
+                struct sub_box outer, inner;
 
-        sub_load_image(&im, "1.png");
-
-        crop.right = crop.bottom = 0;
-        crop.top = im.height;
-        crop.left = im.width;
-
-        for(i = 0; i < im.width; i++) {
-                struct sub_box inner;
-
-                sub_image_find_box(&im, &box, BLACK, i, 1020);
-                if (sub_box_area(&box) == 0) continue;
-                sub_image_find_box(&im, &inner, WHITE, i+5, 1020);
-                if (sub_box_area(&box) == 0 || !sub_box_contains(&box, &inner)) {
+                sub_image_find_box(image, &outer, BLACK, i, y);
+                if (sub_box_area(&outer) == 0) continue;
+                sub_image_find_box(image, &inner, WHITE, i+6, y);
+                if (sub_box_area(&inner) == 0 || !sub_box_contains(&outer, &inner)) {
                         continue;
                 }
 
-                i = box.right;
-                crop.left = min(crop.left, box.left);
-                crop.right = max(crop.right, box.right);
-                crop.top = min(crop.top, box.top);
-                crop.bottom = max(crop.bottom, box.bottom);
+                i = outer.right;
+                crop->left = min(crop->left, outer.left);
+                crop->right = max(crop->right, outer.right);
+                crop->top = min(crop->top, outer.top);
+                crop->bottom = max(crop->bottom, outer.bottom);
         }
+}
 
-        printf("left:   %ld\n", crop.left);
-        printf("right:  %ld\n", crop.right);
-        printf("top:    %ld\n", crop.top);
-        printf("bottom: %ld\n", crop.bottom);
+int main() {
+        struct sub_image im;
+        size_t i, count = 1;
+        char out_file[150];
 
-        sub_save_image_cropped(&im, &crop, "cropped.png");
+        sub_load_image(&im, "2.png");
+
+        for(i = MAX_BOX_RADIUS; i < im.height - MAX_BOX_RADIUS; i += 30) {
+                struct sub_box crop;
+
+                crop.right = crop.bottom = 0;
+                crop.top = im.height;
+                crop.left = im.width;
+
+                sub_scan_image(&im, &crop, i);
+                sub_scan_image(&im, &crop, crop.top);
+                sub_scan_image(&im, &crop, crop.bottom);
+                sub_scan_image(&im, &crop, (crop.bottom - crop.top) / 2);
+
+                if (sub_box_area(&crop) < im.width * im.height) {
+                        printf("%ld\n", i);
+                        sprintf(out_file, "cropped_%ld.png", count);
+                        sub_save_image_cropped(&im, &crop, out_file);
+                        i = crop.bottom;
+                        count++;
+
+                        printf("left:   %ld\n", crop.left);
+                        printf("right:  %ld\n", crop.right);
+                        printf("top:    %ld\n", crop.top);
+                        printf("bottom: %ld\n", crop.bottom);
+                }
+        }
 
         sub_image_destroy(&im);
         return EXIT_SUCCESS;
