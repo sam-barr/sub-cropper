@@ -76,6 +76,14 @@ int sub_pixel_equal(struct sub_pixel p1, struct sub_pixel p2) {
         return p1.r == p2.r && p1.g == p2.g && p1.b == p2.b;
 }
 
+int sub_pixel_different(struct sub_pixel p1, struct sub_pixel p2) {
+        int rd, gd, bd;
+        rd = p1.r - p2.r;
+        gd = p1.g - p2.g;
+        bd = p1.b - p2.b;
+        return (rd * rd) + (gd * gd) + (bd * bd) > 10000;
+}
+
 /*
  * Reads the first 8 bytes and checks them against the magic png header
  * Should probably be followed with a call to "png_set_sig_bytes"
@@ -371,7 +379,8 @@ void sub_scan_image(struct sub_image *image, struct sub_box *crop, size_t y) {
         size_t i;
         for(i = MAX_BOX_RADIUS; i < image->width - MAX_BOX_RADIUS; i++) {
                 struct sub_box outer, inner;
-                size_t oarea, iarea, a;
+                struct sub_pixel ocolor, icolor;
+                size_t oarea, iarea;
 
                 sub_image_find_box(image, &outer, i, y);
                 oarea = sub_box_area(&outer);
@@ -384,22 +393,10 @@ void sub_scan_image(struct sub_image *image, struct sub_box *crop, size_t y) {
                         continue;
                 }
 
-                for (a = outer.left; a < outer.right; a++) {
-                        sub_image_set_pixel(image, MAGEN, a, outer.top);
-                        sub_image_set_pixel(image, MAGEN, a, outer.bottom);
-                }
-                for (a = outer.top; a < outer.bottom; a++) {
-                        sub_image_set_pixel(image, MAGEN, outer.left, a);
-                        sub_image_set_pixel(image, MAGEN, outer.right, a);
-                }
-                for (a = inner.left; a < inner.right; a++) {
-                        sub_image_set_pixel(image, GREEN, a, inner.top);
-                        sub_image_set_pixel(image, GREEN, a, inner.bottom);
-                }
-                for (a = inner.top; a < inner.bottom; a++) {
-                        sub_image_set_pixel(image, GREEN, inner.left, a);
-                        sub_image_set_pixel(image, GREEN, inner.right, a);
-                }
+                ocolor = sub_image_get_pixel(image, i, y);
+                icolor = sub_image_get_pixel(image, i+5, y);
+                if (!sub_pixel_different(ocolor, icolor))
+                        continue;
 
                 i = outer.right;
                 crop->left = min(crop->left, outer.left);
@@ -409,14 +406,19 @@ void sub_scan_image(struct sub_image *image, struct sub_box *crop, size_t y) {
         }
 }
 
-int main() {
+int main(int argc, char **argv) {
         struct sub_image im;
         size_t i, count = 1;
         char out_file[150];
 
-        sub_load_image(&im, "3.png");
+        if (argc == 1) {
+                fprintf(stderr, "Please give an input\n");
+                return EXIT_FAILURE;
+        }
 
-        for(i = MAX_BOX_RADIUS; i < im.height - MAX_BOX_RADIUS; i += 15) {
+        sub_load_image(&im, argv[1]);
+
+        for(i = MAX_BOX_RADIUS; i < im.height - MAX_BOX_RADIUS; i += MAX_BOX_RADIUS) {
                 struct sub_box crop;
                 size_t top, bottom, y;
 
@@ -429,12 +431,8 @@ int main() {
                 top = crop.top;
                 bottom = crop.bottom;
 
-                for(y = top; y < bottom; y++)
+                for(y = top; y < bottom; y += 3)
                         sub_scan_image(&im, &crop, y);
-
-                /* sub_scan_image(&im, &crop, crop.top); */
-                /* sub_scan_image(&im, &crop, crop.bottom); */
-                /* sub_scan_image(&im, &crop, (crop.bottom - crop.top) / 2); */
                 
 
                 printf("%ld\n", i);
