@@ -25,7 +25,7 @@ sub-cropper: $(CSOURCE)
 
 .PHONY: install
 install: sub-cropper
-	install ./stack-png $(INSTALL_DIR)/stack-png
+	install ./sub-cropper $(INSTALL_DIR)/sub-cropper
 
 .PHONY: clean
 clean:

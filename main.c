@@ -404,7 +404,7 @@ int main(int argc, char **argv) {
 
         sub_load_image(&im, argv[1]);
 
-        for(i = MAX_BOX_RADIUS; i < im.height - MAX_BOX_RADIUS; i += MAX_BOX_RADIUS) {
+        for(i = MAX_BOX_RADIUS; i < im.height - MAX_BOX_RADIUS; i += MAX_BOX_RADIUS/2) {
                 struct sub_box crop;
                 size_t top, bottom, y;
 
