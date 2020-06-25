@@ -58,6 +58,8 @@ struct sub_pixel {
 
 const struct sub_pixel WHITE = { 0xff, 0xff, 0xff };
 const struct sub_pixel BLACK = { 0x00, 0x00, 0x00 };
+const struct sub_pixel MAGEN = { 0xff, 0x00, 0xff };
+const struct sub_pixel GREEN = { 0x00, 0xff, 0x00 };
 
 struct sub_box {
         size_t top;
@@ -275,16 +277,16 @@ size_t sub_box_area(struct sub_box *box) {
 }
 
 int sub_box_contains(struct sub_box *outer, struct sub_box *inner) {
-        return outer->right >= inner->right &&
-                outer->left <= inner->left &&
-                outer->bottom >= inner->bottom &&
-                outer->top <= inner->bottom;
+        return outer->right > inner->right &&
+                outer->left < inner->left &&
+                outer->bottom > inner->bottom &&
+                outer->top < inner->top;
 }
 
 struct sub_point _s[100000];
 
 /* this has (n+1) off bye one errors */
-void sub_image_find_box(struct sub_image *image, struct sub_box *box,
+void sub_image_find_box_color(struct sub_image *image, struct sub_box *box,
                 struct sub_pixel color, size_t x, size_t y) {
         size_t stack_size;
         size_t left, right, top, bottom;
@@ -341,6 +343,16 @@ void sub_image_find_box(struct sub_image *image, struct sub_box *box,
 #undef valid_y
 }
 
+void sub_image_find_box(struct sub_image *image, struct sub_box *box, size_t x, size_t y) {
+        if (x >= image->width || y >= image->height) {
+                sub_image_find_box_color(image, box, BLACK, x, y);
+        } else {
+                struct sub_pixel c = sub_image_get_pixel(image, x, y);
+                sub_image_find_box_color(image, box, c, x, y);
+        }
+}
+
+
 void sub_load_image(struct sub_image *image, char *file_name) {
         struct sub_png_reader reader;
         sub_png_reader_init(&reader, file_name);
@@ -359,12 +371,34 @@ void sub_scan_image(struct sub_image *image, struct sub_box *crop, size_t y) {
         size_t i;
         for(i = MAX_BOX_RADIUS; i < image->width - MAX_BOX_RADIUS; i++) {
                 struct sub_box outer, inner;
+                size_t oarea, iarea, a;
 
-                sub_image_find_box(image, &outer, BLACK, i, y);
-                if (sub_box_area(&outer) == 0) continue;
-                sub_image_find_box(image, &inner, WHITE, i+6, y);
-                if (sub_box_area(&inner) == 0 || !sub_box_contains(&outer, &inner)) {
+                sub_image_find_box(image, &outer, i, y);
+                oarea = sub_box_area(&outer);
+                if (oarea < 200) continue;
+                sub_image_find_box(image, &inner, i+5, y);
+                iarea = sub_box_area(&inner);
+                if (iarea == 0 ||
+                        iarea == oarea ||
+                        !sub_box_contains(&outer, &inner)) {
                         continue;
+                }
+
+                for (a = outer.left; a < outer.right; a++) {
+                        sub_image_set_pixel(image, MAGEN, a, outer.top);
+                        sub_image_set_pixel(image, MAGEN, a, outer.bottom);
+                }
+                for (a = outer.top; a < outer.bottom; a++) {
+                        sub_image_set_pixel(image, MAGEN, outer.left, a);
+                        sub_image_set_pixel(image, MAGEN, outer.right, a);
+                }
+                for (a = inner.left; a < inner.right; a++) {
+                        sub_image_set_pixel(image, GREEN, a, inner.top);
+                        sub_image_set_pixel(image, GREEN, a, inner.bottom);
+                }
+                for (a = inner.top; a < inner.bottom; a++) {
+                        sub_image_set_pixel(image, GREEN, inner.left, a);
+                        sub_image_set_pixel(image, GREEN, inner.right, a);
                 }
 
                 i = outer.right;
@@ -380,32 +414,39 @@ int main() {
         size_t i, count = 1;
         char out_file[150];
 
-        sub_load_image(&im, "2.png");
+        sub_load_image(&im, "3.png");
 
-        for(i = MAX_BOX_RADIUS; i < im.height - MAX_BOX_RADIUS; i += 30) {
+        for(i = MAX_BOX_RADIUS; i < im.height - MAX_BOX_RADIUS; i += 15) {
                 struct sub_box crop;
+                size_t top, bottom, y;
 
                 crop.right = crop.bottom = 0;
                 crop.top = im.height;
                 crop.left = im.width;
 
                 sub_scan_image(&im, &crop, i);
-                sub_scan_image(&im, &crop, crop.top);
-                sub_scan_image(&im, &crop, crop.bottom);
-                sub_scan_image(&im, &crop, (crop.bottom - crop.top) / 2);
+                if(crop.top == im.height || crop.left == im.width) continue;
+                top = crop.top;
+                bottom = crop.bottom;
 
-                if (sub_box_area(&crop) < im.width * im.height) {
-                        printf("%ld\n", i);
-                        sprintf(out_file, "cropped_%ld.png", count);
-                        sub_save_image_cropped(&im, &crop, out_file);
-                        i = crop.bottom;
-                        count++;
+                for(y = top; y < bottom; y++)
+                        sub_scan_image(&im, &crop, y);
 
-                        printf("left:   %ld\n", crop.left);
-                        printf("right:  %ld\n", crop.right);
-                        printf("top:    %ld\n", crop.top);
-                        printf("bottom: %ld\n", crop.bottom);
-                }
+                /* sub_scan_image(&im, &crop, crop.top); */
+                /* sub_scan_image(&im, &crop, crop.bottom); */
+                /* sub_scan_image(&im, &crop, (crop.bottom - crop.top) / 2); */
+                
+
+                printf("%ld\n", i);
+                sprintf(out_file, "cropped_%ld.png", count);
+                sub_save_image_cropped(&im, &crop, out_file);
+                i = crop.bottom;
+                count++;
+
+                printf("left:   %ld\n", crop.left);
+                printf("right:  %ld\n", crop.right);
+                printf("top:    %ld\n", crop.top);
+                printf("bottom: %ld\n", crop.bottom);
         }
 
         sub_image_destroy(&im);
