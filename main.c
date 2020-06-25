@@ -56,11 +56,6 @@ struct sub_pixel {
         uint8_t b;
 };
 
-const struct sub_pixel WHITE = { 0xff, 0xff, 0xff };
-const struct sub_pixel BLACK = { 0x00, 0x00, 0x00 };
-const struct sub_pixel MAGEN = { 0xff, 0x00, 0xff };
-const struct sub_pixel GREEN = { 0x00, 0xff, 0x00 };
-
 struct sub_box {
         size_t top;
         size_t bottom;
@@ -291,6 +286,7 @@ int sub_box_contains(struct sub_box *outer, struct sub_box *inner) {
                 outer->top < inner->top;
 }
 
+/* TODO: this is terrible */
 struct sub_point _s[100000];
 
 /* this has (n+1) off bye one errors */
@@ -315,7 +311,6 @@ void sub_image_find_box(struct sub_image *image, struct sub_box *box,
 
         box->left = box->right = x;
         box->top = box->bottom = y;
-        if(!valid_x(x) || !valid_y(y)) return;
 
         while (stack_size > 0) {
                 struct sub_point point;
@@ -377,7 +372,7 @@ void sub_scan_image(struct sub_image *image, struct sub_box *crop, size_t y) {
 
                 sub_image_find_box(image, &outer, ocolor, i, y);
                 oarea = sub_box_area(&outer);
-                if (oarea < 200) continue;
+                if (oarea == 0) continue;
                 sub_image_find_box(image, &inner, icolor, i+5, y);
                 iarea = sub_box_area(&inner);
                 if (iarea == 0 ||
@@ -425,21 +420,19 @@ int main(int argc, char **argv) {
                 for(y = top; y < bottom; y += 3)
                         sub_scan_image(&im, &crop, y);
 
+                /* try to grow the box a little */
+                /* IDEA: alternate traversing left and right? */
                 if (crop.left > MAX_BOX_RADIUS)
                         crop.left -= MAX_BOX_RADIUS;
                 if (im.width - crop.right > MAX_BOX_RADIUS)
                         crop.right += MAX_BOX_RADIUS;
 
-                printf("%ld\n", i);
                 sprintf(out_file, "cropped_%ld.png", count);
+                printf("Opening %s for writing... ", out_file);
                 sub_save_image_cropped(&im, &crop, out_file);
+                printf("done\n");
                 i = crop.bottom;
                 count++;
-
-                printf("left:   %ld\n", crop.left);
-                printf("right:  %ld\n", crop.right);
-                printf("top:    %ld\n", crop.top);
-                printf("bottom: %ld\n", crop.bottom);
         }
 
         sub_image_destroy(&im);
