@@ -24,12 +24,6 @@
 #define true 1
 #define false 0
 
-enum sub_tri_state {
-        SUB_NONE = 0,
-        SUB_FALSE,
-        SUB_TRUE
-};
-
 struct sub_png_reader {
         png_struct *png;
         png_info *info;
@@ -235,8 +229,6 @@ struct sub_pixel sub_image_get_pixel(struct sub_image *image, size_t x, size_t y
         struct sub_pixel pixel;
         size_t row_size;
 
-        /* printf("%ld; %ld\n", x, y); */
-
         row_size = sub_image_row_size(image);
         pixel.r = image->data[row_size * y + 3 * x];
         pixel.g = image->data[row_size * y + 3 * x + 1];
@@ -253,6 +245,25 @@ void sub_image_set_pixel(struct sub_image *image,
         image->data[row_size * y + 3 * x + 1] = pixel.g;
         image->data[row_size * y + 3 * x + 2] = pixel.b;
 }
+
+/*
+ * Box functions
+ */
+
+size_t sub_box_area(struct sub_box *box) {
+        return (box->right - box->left) * (box->bottom - box->top);
+}
+
+int sub_box_contains(struct sub_box *outer, struct sub_box *inner) {
+        return outer->right > inner->right &&
+                outer->left < inner->left &&
+                outer->bottom > inner->bottom &&
+                outer->top < inner->top;
+}
+
+/*
+ * Box finding data & functions
+ */
 
 struct sub_point  {
         size_t x;
@@ -271,20 +282,11 @@ struct sub_point sub_stack_pop(struct sub_point **stack, size_t *size) {
         return (*stack)[-1];
 }
 
-/*
- * Box functions
- */
-
-size_t sub_box_area(struct sub_box *box) {
-        return (box->right - box->left) * (box->bottom - box->top);
-}
-
-int sub_box_contains(struct sub_box *outer, struct sub_box *inner) {
-        return outer->right > inner->right &&
-                outer->left < inner->left &&
-                outer->bottom > inner->bottom &&
-                outer->top < inner->top;
-}
+enum sub_tri_state {
+        SUB_NONE = 0,
+        SUB_FALSE,
+        SUB_TRUE
+};
 
 /* TODO: this is terrible */
 struct sub_point _s[100000];
@@ -360,6 +362,9 @@ void sub_save_image_cropped(struct sub_image *image, struct sub_box *box, char *
         sub_png_writer_destroy(&writer);
 }
 
+/*
+ * Scan an image horizontally for subs at height y
+ */
 void sub_scan_image(struct sub_image *image, struct sub_box *crop, size_t y) {
         size_t i;
         for(i = MAX_BOX_RADIUS; i < image->width - MAX_BOX_RADIUS; i++) {
@@ -428,13 +433,13 @@ int main(int argc, char **argv) {
                         crop.right += MAX_BOX_RADIUS;
 
                 sprintf(out_file, "cropped_%d.png", count);
-                printf("Opening %s for writing... ", out_file);
                 sub_save_image_cropped(&im, &crop, out_file);
-                printf("done\n");
                 i = crop.bottom;
                 count++;
         }
 
         sub_image_destroy(&im);
-        return (count == 0) ? -1 : count;
+
+        printf("Found %d subtitles\n", count);
+        return count;
 }
