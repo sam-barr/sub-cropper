@@ -394,7 +394,8 @@ void sub_scan_image(struct sub_image *image, struct sub_box *crop, size_t y) {
 
 int main(int argc, char **argv) {
         struct sub_image im;
-        size_t i, count = 1;
+        size_t i;
+        int count = 0;
         char out_file[150];
 
         if (argc == 1) {
@@ -427,7 +428,7 @@ int main(int argc, char **argv) {
                 if (im.width - crop.right > MAX_BOX_RADIUS)
                         crop.right += MAX_BOX_RADIUS;
 
-                sprintf(out_file, "cropped_%ld.png", count);
+                sprintf(out_file, "cropped_%d.png", count);
                 printf("Opening %s for writing... ", out_file);
                 sub_save_image_cropped(&im, &crop, out_file);
                 printf("done\n");
@@ -436,5 +437,5 @@ int main(int argc, char **argv) {
         }
 
         sub_image_destroy(&im);
-        return EXIT_SUCCESS;
+        return (count == 0) ? -1 : count;
 }
