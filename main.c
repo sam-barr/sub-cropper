@@ -369,6 +369,8 @@ void sub_scan_image(struct sub_image *image, struct sub_box *crop, size_t y) {
 
                 ocolor = sub_image_get_pixel(image, i, y);
                 icolor = sub_image_get_pixel(image, i+5, y);
+                if (!sub_pixel_different(ocolor, icolor))
+                        continue;
 
                 sub_image_find_box(image, &outer, ocolor, i, y);
                 oarea = sub_box_area(&outer);
@@ -380,9 +382,6 @@ void sub_scan_image(struct sub_image *image, struct sub_box *crop, size_t y) {
                         !sub_box_contains(&outer, &inner)) {
                         continue;
                 }
-
-                if (!sub_pixel_different(ocolor, icolor))
-                        continue;
 
                 i = outer.right;
                 crop->left = min(crop->left, outer.left);
