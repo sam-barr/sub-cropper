@@ -363,36 +363,57 @@ void sub_save_image_cropped(struct sub_image *image, struct sub_box *box, char *
 }
 
 /*
+ * RETURN: how much more to increment/decrement i by
+ */
+int sub_scan_image_helper(struct sub_image *image, struct sub_box *crop,
+                size_t y, size_t ox, size_t ix) {
+        struct sub_box outer, inner;
+        struct sub_pixel ocolor, icolor;
+        size_t oarea, iarea;
+
+        ocolor = sub_image_get_pixel(image, ox, y);
+        icolor = sub_image_get_pixel(image, ix, y);
+        if (!sub_pixel_different(ocolor, icolor))
+                return 0;
+
+        sub_image_find_box(image, &outer, ocolor, ox, y);
+        oarea = sub_box_area(&outer);
+        if (oarea == 0)
+                return 0;
+        sub_image_find_box(image, &inner, icolor, ix, y);
+        iarea = sub_box_area(&inner);
+        if (iarea == 0 || !sub_box_contains(&outer, &inner))
+                return 0;
+
+        /* i = (direction > 0) ? outer.right : outer.left; */
+        crop->left = min(crop->left, outer.left);
+        crop->right = max(crop->right, outer.right);
+        crop->top = min(crop->top, outer.top);
+        crop->bottom = max(crop->bottom, outer.bottom);
+        return outer.right - outer.left;
+}
+
+enum sub_direction {
+        DIR_RIGHT,
+        DIR_LEFT
+};
+
+/*
  * Scan an image horizontally for subs at height y
  */
-void sub_scan_image(struct sub_image *image, struct sub_box *crop, size_t y) {
+void sub_scan_image(struct sub_image *image, struct sub_box *crop,
+                size_t y, enum sub_direction direction) {
         size_t i;
-        for(i = MAX_BOX_RADIUS; i < image->width - MAX_BOX_RADIUS; i++) {
-                struct sub_box outer, inner;
-                struct sub_pixel ocolor, icolor;
-                size_t oarea, iarea;
 
-                ocolor = sub_image_get_pixel(image, i, y);
-                icolor = sub_image_get_pixel(image, i+5, y);
-                if (!sub_pixel_different(ocolor, icolor))
-                        continue;
-
-                sub_image_find_box(image, &outer, ocolor, i, y);
-                oarea = sub_box_area(&outer);
-                if (oarea == 0) continue;
-                sub_image_find_box(image, &inner, icolor, i+5, y);
-                iarea = sub_box_area(&inner);
-                if (iarea == 0 ||
-                        iarea == oarea ||
-                        !sub_box_contains(&outer, &inner)) {
-                        continue;
-                }
-
-                i = outer.right;
-                crop->left = min(crop->left, outer.left);
-                crop->right = max(crop->right, outer.right);
-                crop->top = min(crop->top, outer.top);
-                crop->bottom = max(crop->bottom, outer.bottom);
+        switch (direction) {
+        case DIR_RIGHT:
+                for (i = MAX_BOX_RADIUS; i <= image->width - MAX_BOX_RADIUS; i++)
+                        i += sub_scan_image_helper(image, crop, y, i, i + 5);
+                break;
+        case DIR_LEFT:
+                for (i = image->width - MAX_BOX_RADIUS; i >= MAX_BOX_RADIUS; i--)
+                        i -= sub_scan_image_helper(image, crop, y, i, i - 5);
+                break;
         }
 }
 
@@ -417,13 +438,16 @@ int main(int argc, char **argv) {
                 crop.top = im.height;
                 crop.left = im.width;
 
-                sub_scan_image(&im, &crop, i);
-                if(crop.top == im.height || crop.left == im.width) continue;
+                sub_scan_image(&im, &crop, i, DIR_RIGHT);
+                if(crop.right == 0)
+                        continue;
                 top = crop.top;
                 bottom = crop.bottom;
 
-                for(y = top; y < bottom; y += 3)
-                        sub_scan_image(&im, &crop, y);
+                for(y = top; y < bottom; y += 5) {
+                        sub_scan_image(&im, &crop, y, DIR_RIGHT);
+                        sub_scan_image(&im, &crop, y, DIR_LEFT);
+                }
 
                 /* try to grow the box a little */
                 /* IDEA: alternate traversing left and right? */
