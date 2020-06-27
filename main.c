@@ -421,14 +421,16 @@ int main(int argc, char **argv) {
         struct sub_image im;
         size_t i;
         int count = 0;
-        char out_file[150];
+        char out_file[150], *in_file;
 
         if (argc == 1) {
                 fprintf(stderr, "Please give an input\n");
                 return EXIT_FAILURE;
         }
 
-        sub_load_image(&im, argv[1]);
+        in_file = argv[1];
+        sub_load_image(&im, in_file);
+        *strrchr(in_file, '.') = '\0'; /* chop of ".png" from file name */
 
         for(i = MAX_BOX_RADIUS; i < im.height - MAX_BOX_RADIUS; i += MAX_BOX_RADIUS/2) {
                 struct sub_box crop;
@@ -456,7 +458,7 @@ int main(int argc, char **argv) {
                 if (im.width - crop.right > MAX_BOX_RADIUS)
                         crop.right += MAX_BOX_RADIUS;
 
-                sprintf(out_file, "cropped_%d.png", count);
+                sprintf(out_file, "%s.cropped.%d.png", in_file, count);
                 sub_save_image_cropped(&im, &crop, out_file);
                 i = crop.bottom;
                 count++;
