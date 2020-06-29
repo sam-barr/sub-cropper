@@ -282,29 +282,29 @@ struct sub_point sub_stack_pop(struct sub_point **stack, size_t *size) {
         return (*stack)[-1];
 }
 
-enum sub_tri_state {
+enum sub_quad_state {
         SUB_NONE = 0,
+        SUB_QUEUE,
         SUB_FALSE,
         SUB_TRUE
 };
 
-/* TODO: this is terrible */
-struct sub_point _s[100000];
+struct sub_point _s[MAX_BOX_DIAM * MAX_BOX_DIAM];
 
 /* this has (n+1) off bye one errors */
 void sub_image_find_box(struct sub_image *image, struct sub_box *box,
                 struct sub_pixel color, size_t x, size_t y) {
-        size_t stack_size;
+        size_t stack_size = 0;
         size_t left, right, top, bottom;
-        enum sub_tri_state pixel_states[MAX_BOX_DIAM][MAX_BOX_DIAM] = {SUB_NONE};
+        enum sub_quad_state pixel_states[MAX_BOX_DIAM][MAX_BOX_DIAM] = {SUB_NONE};
         struct sub_point *stack = _s;
 
-        stack_size = 0;
-        sub_stack_push(&stack, &stack_size, x, y);
+#define get_state(x, y) (pixel_states[(x) - left][(y) - top])
+#define valid_x(x) ((x) >= left && (x) < right && (x))
+#define valid_y(y) ((y) >= top && (y) < bottom && (y))
+#define valid(x, y) (valid_x(x) && valid_y(y) && get_state(x, y) == SUB_NONE)
 
-#define get_state(p) (pixel_states[(p).x - left][(p).y - top])
-#define valid_x(x) ((x) >= left && (x) < right && (x) < image->width)
-#define valid_y(y) ((y) >= top && (y) < bottom && (y) < image->height)
+        sub_stack_push(&stack, &stack_size, x, y);
 
         left = (x > MAX_BOX_RADIUS) ? x - MAX_BOX_RADIUS : 0;
         right = min(image->width, x + MAX_BOX_RADIUS);
@@ -320,32 +320,39 @@ void sub_image_find_box(struct sub_image *image, struct sub_box *box,
 
                 point = sub_stack_pop(&stack, &stack_size);
                 c = sub_image_get_pixel(image, point.x, point.y);
-                if (get_state(point) != SUB_NONE) {
-                        continue;
-                } else if (!sub_pixel_equal(color, c)) {
-                        get_state(point) = SUB_FALSE;
+                if (!sub_pixel_equal(color, c)) {
+                        get_state(point.x, point.y) = SUB_FALSE;
                         continue;
                 }
 
-                get_state(point) = SUB_TRUE;
+                get_state(point.x, point.y) = SUB_TRUE;
                 box->left = min(box->left, point.x);
                 box->right = max(box->right, point.x);
                 box->top = min(box->top, point.y);
                 box->bottom = max(box->bottom, point.y);
 
-                if (valid_x(point.x - 1) && valid_y(point.y))
+                if (valid(point.x - 1, point.y)) {
+                        get_state(point.x - 1, point.y) = SUB_QUEUE;
                         sub_stack_push(&stack, &stack_size, point.x - 1, point.y);
-                if (valid_x(point.x + 1) && valid_y(point.y))
+                }
+                if (valid(point.x + 1, point.y)) {
+                        get_state(point.x + 1, point.y) = SUB_QUEUE;
                         sub_stack_push(&stack, &stack_size, point.x + 1, point.y);
-                if (valid_x(point.x) && valid_y(point.y - 1))
+                }
+                if (valid(point.x, point.y - 1)) {
+                        get_state(point.x, point.y - 1) = SUB_QUEUE;
                         sub_stack_push(&stack, &stack_size, point.x, point.y - 1);
-                if (valid_x(point.x) && valid_y(point.y + 1))
+                }
+                if (valid(point.x, point.y + 1)) {
+                        get_state(point.x, point.y + 1) = SUB_QUEUE;
                         sub_stack_push(&stack, &stack_size, point.x, point.y + 1);
+                }
         }
 
 #undef get_state
 #undef valid_x
 #undef valid_y
+#undef valid
 }
 
 void sub_load_image(struct sub_image *image, char *file_name) {
@@ -405,6 +412,7 @@ void sub_scan_image(struct sub_image *image, struct sub_box *crop,
                 size_t y, enum sub_direction direction) {
         size_t i;
 
+        /* TODO: this is also kinda bad */
         switch (direction) {
         case DIR_RIGHT:
                 for (i = MAX_BOX_RADIUS; i <= image->width - MAX_BOX_RADIUS; i++)
@@ -451,8 +459,6 @@ int main(int argc, char **argv) {
                         sub_scan_image(&im, &crop, y, DIR_LEFT);
                 }
 
-                /* try to grow the box a little */
-                /* IDEA: alternate traversing left and right? */
                 if (crop.left > MAX_BOX_RADIUS)
                         crop.left -= MAX_BOX_RADIUS;
                 if (im.width - crop.right > MAX_BOX_RADIUS)
