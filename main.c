@@ -142,7 +142,7 @@ void sub_png_reader_load_image(struct sub_png_reader *reader, struct sub_image *
         image->data = malloc(row_size * image->height);
 
         image_rows = png_get_rows(reader->png, reader->info);
-        for(i = 0; i < image->height; i++)
+        for (i = 0; i < image->height; i++)
                 memcpy(image->data + i * row_size, image_rows[i], row_size);
 }
 
@@ -289,6 +289,7 @@ enum sub_quad_state {
         SUB_TRUE
 };
 
+/* Reserve memory for the "stack" in sub_image_find_box */
 struct sub_point _s[MAX_BOX_DIAM * MAX_BOX_DIAM];
 
 /* this has (n+1) off bye one errors */
@@ -440,7 +441,7 @@ int main(int argc, char **argv) {
         sub_load_image(&im, in_file);
         *strrchr(in_file, '.') = '\0'; /* chop of ".png" from file name */
 
-        for(i = MAX_BOX_RADIUS; i < im.height - MAX_BOX_RADIUS; i += MAX_BOX_RADIUS/2) {
+        for (i = MAX_BOX_RADIUS; i < im.height - MAX_BOX_RADIUS; i += MAX_BOX_RADIUS/2) {
                 struct sub_box crop;
                 size_t top, bottom, y;
 
@@ -449,12 +450,12 @@ int main(int argc, char **argv) {
                 crop.left = im.width;
 
                 sub_scan_image(&im, &crop, i, DIR_RIGHT);
-                if(crop.right == 0)
+                if (crop.right == 0)
                         continue;
                 top = crop.top;
                 bottom = crop.bottom;
 
-                for(y = top; y < bottom; y += 5) {
+                for (y = top; y < bottom; y += 5) {
                         sub_scan_image(&im, &crop, y, DIR_RIGHT);
                         sub_scan_image(&im, &crop, y, DIR_LEFT);
                 }
