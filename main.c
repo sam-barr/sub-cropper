@@ -18,8 +18,13 @@
 
 #define DEBUG_BOOL(b) printf("%s\n", (b) ? "true" : "false")
 
-#define MAX_BOX_RADIUS 30
-#define MAX_BOX_DIAM (2 * MAX_BOX_RADIUS)
+/*
+ * Divide the image width by this skillfully picked magic
+ * to estimate the size of subtitle characters
+ */
+#define BOX_RADIUS_MAGIC_NUMBER 32
+
+size_t MAX_BOX_RADIUS, MAX_BOX_DIAM;
 
 #define true 1
 #define false 0
@@ -237,8 +242,7 @@ struct sub_pixel sub_image_get_pixel(struct sub_image *image, size_t x, size_t y
         return pixel;
 }
 
-void sub_image_set_pixel(struct sub_image *image,
-                struct sub_pixel pixel,
+void sub_image_set_pixel(struct sub_image *image, struct sub_pixel pixel,
                 size_t x, size_t y) {
         size_t row_size = sub_image_row_size(image);
         image->data[row_size * y + 3 * x]     = pixel.r;
@@ -290,21 +294,25 @@ enum sub_quad_state {
 };
 
 /* Reserve memory for the "stack" in sub_image_find_box */
-struct sub_point _s[MAX_BOX_DIAM * MAX_BOX_DIAM];
+#define STACK_SIZE (sizeof(struct sub_point) * MAX_BOX_DIAM * MAX_BOX_DIAM)
+#define STATE_SIZE (sizeof(enum sub_quad_state) * MAX_BOX_DIAM * MAX_BOX_DIAM)
+struct sub_point *STACK;
+enum sub_quad_state *PIXEL_STATES;
 
 /* this has (n+1) off bye one errors */
 void sub_image_find_box(struct sub_image *image, struct sub_box *box,
                 struct sub_pixel color, size_t x, size_t y) {
         size_t stack_size = 0;
         size_t left, right, top, bottom;
-        enum sub_quad_state pixel_states[MAX_BOX_DIAM][MAX_BOX_DIAM] = {SUB_NONE};
-        struct sub_point *stack = _s;
+        enum sub_quad_state *pixel_states = PIXEL_STATES;
+        struct sub_point *stack = STACK;
 
-#define get_state(x, y) (pixel_states[(x) - left][(y) - top])
+#define get_state(x, y) (pixel_states[MAX_BOX_DIAM * ((y) - top) + ((x) - left)])
 #define valid_x(x) ((x) >= left && (x) < right && (x))
 #define valid_y(y) ((y) >= top && (y) < bottom && (y))
 #define valid(x, y) (valid_x(x) && valid_y(y) && get_state(x, y) == SUB_NONE)
 
+        memset(pixel_states, SUB_NONE, STATE_SIZE);
         sub_stack_push(&stack, &stack_size, x, y);
 
         left = (x > MAX_BOX_RADIUS) ? x - MAX_BOX_RADIUS : 0;
@@ -393,7 +401,6 @@ int sub_scan_image_helper(struct sub_image *image, struct sub_box *crop,
         if (iarea == 0 || !sub_box_contains(&outer, &inner))
                 return 0;
 
-        /* i = (direction > 0) ? outer.right : outer.left; */
         crop->left = min(crop->left, outer.left);
         crop->right = max(crop->right, outer.right);
         crop->top = min(crop->top, outer.top);
@@ -439,6 +446,9 @@ int main(int argc, char **argv) {
 
         in_file = argv[1];
         sub_load_image(&im, in_file);
+        MAX_BOX_RADIUS = (MAX_BOX_DIAM = im.width / BOX_RADIUS_MAGIC_NUMBER) / 2;
+        STACK = malloc(STACK_SIZE);
+        PIXEL_STATES = malloc(STATE_SIZE);
         *strrchr(in_file, '.') = '\0'; /* chop of ".png" from file name */
 
         for (i = MAX_BOX_RADIUS; i < im.height - MAX_BOX_RADIUS; i += MAX_BOX_RADIUS/2) {
@@ -472,6 +482,8 @@ int main(int argc, char **argv) {
         }
 
         sub_image_destroy(&im);
+        free(STACK);
+        free(PIXEL_STATES);
 
         printf("Found %d subtitles\n", count);
         return count;
