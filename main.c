@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <getopt.h>
 
 #include <png.h>
 
@@ -92,7 +93,7 @@ int sub_check_if_png(FILE *file) {
  * struct sub_png reading functions
  */
 
-void sub_png_reader_init(struct sub_png_reader *reader, char *file_name) {
+void sub_png_reader_init(struct sub_png_reader *reader, const char *file_name) {
         png_struct *png;
         png_info *info;
         FILE *file;
@@ -155,7 +156,7 @@ void sub_png_reader_load_image(struct sub_png_reader *reader, struct sub_image *
  * struct sub_png writing functions
  */
 
-void sub_png_writer_init(struct sub_png_writer *writer, char *file_name) {
+void sub_png_writer_init(struct sub_png_writer *writer, const char *file_name) {
         png_struct *png;
         png_info *info;
         FILE *file;
@@ -191,7 +192,7 @@ void sub_png_writer_destroy(struct sub_png_writer *writer) {
 }
 
 void sub_png_writer_save_image_cropped(struct sub_png_writer *writer,
-                struct sub_image *image, struct sub_box *crop) {
+                const struct sub_image *image, const struct sub_box *crop) {
         uint8_t **data;
         size_t row_size, i, width, height;
 
@@ -230,7 +231,7 @@ void sub_image_destroy(struct sub_image *image) {
         free(image->data);
 }
 
-struct sub_pixel sub_image_get_pixel(struct sub_image *image, size_t x, size_t y) {
+struct sub_pixel sub_image_get_pixel(const struct sub_image *image, size_t x, size_t y) {
         struct sub_pixel pixel;
         size_t row_size;
 
@@ -254,15 +255,22 @@ void sub_image_set_pixel(struct sub_image *image, struct sub_pixel pixel,
  * Box functions
  */
 
-size_t sub_box_area(struct sub_box *box) {
+size_t sub_box_area(const struct sub_box *box) {
         return (box->right - box->left) * (box->bottom - box->top);
 }
 
-int sub_box_contains(struct sub_box *outer, struct sub_box *inner) {
+int sub_box_contains(const struct sub_box *outer, const struct sub_box *inner) {
         return outer->right > inner->right &&
                 outer->left < inner->left &&
                 outer->bottom > inner->bottom &&
                 outer->top < inner->top;
+}
+
+void sub_box_expand_to_fit(struct sub_box *outer, const struct sub_box *inner) {
+        outer->right = max(outer->right, inner->right);
+        outer->left = min(outer->left, inner->left);
+        outer->bottom = max(outer->bottom, inner->bottom);
+        outer->top = min(outer->top, inner->top);
 }
 
 /*
@@ -300,7 +308,7 @@ struct sub_point *STACK;
 enum sub_quad_state *PIXEL_STATES;
 
 /* this has (n+1) off bye one errors */
-void sub_image_find_box(struct sub_image *image, struct sub_box *box,
+void sub_image_find_box(const struct sub_image *image, struct sub_box *box,
                 struct sub_pixel color, size_t x, size_t y) {
         size_t stack_size = 0;
         size_t left, right, top, bottom;
@@ -364,14 +372,14 @@ void sub_image_find_box(struct sub_image *image, struct sub_box *box,
 #undef valid
 }
 
-void sub_load_image(struct sub_image *image, char *file_name) {
+void sub_load_image(struct sub_image *image, const char *file_name) {
         struct sub_png_reader reader;
         sub_png_reader_init(&reader, file_name);
         sub_png_reader_load_image(&reader, image);
         sub_png_reader_destroy(&reader);
 }
 
-void sub_save_image_cropped(struct sub_image *image, struct sub_box *box, char *file_name) {
+void sub_save_image_cropped(struct sub_image *image, struct sub_box *box, const char *file_name) {
         struct sub_png_writer writer;
         sub_png_writer_init(&writer, file_name);
         sub_png_writer_save_image_cropped(&writer, image, box);
@@ -381,7 +389,7 @@ void sub_save_image_cropped(struct sub_image *image, struct sub_box *box, char *
 /*
  * RETURN: how much more to increment/decrement i by
  */
-int sub_scan_image_helper(struct sub_image *image, struct sub_box *crop,
+int sub_scan_image_helper(const struct sub_image *image, struct sub_box *crop,
                 size_t y, size_t ox, size_t ix) {
         struct sub_box outer, inner;
         struct sub_pixel ocolor, icolor;
@@ -416,7 +424,7 @@ enum sub_direction {
 /*
  * Scan an image horizontally for subs at height y
  */
-void sub_scan_image(struct sub_image *image, struct sub_box *crop,
+void sub_scan_image(const struct sub_image *image, struct sub_box *crop,
                 size_t y, enum sub_direction direction) {
         size_t i;
 
@@ -433,39 +441,60 @@ void sub_scan_image(struct sub_image *image, struct sub_box *crop,
         }
 }
 
+extern int optind;
+extern char *optarg;
+
 int main(int argc, char **argv) {
         struct sub_image im;
+        struct sub_box crop;
         size_t i;
-        int count = 0;
+        int count = 0, all_opt = false, option;
         char out_file[150], *in_file;
 
-        if (argc == 1) {
+        while ((option = getopt(argc, argv, "a")) != -1) {
+                switch (option) {
+                case 'a':
+                        all_opt = true;
+                        break;
+                default:
+                        return EXIT_SUCCESS;
+                }
+        }
+
+        if (optind == argc) {
                 fprintf(stderr, "Please give an input\n");
                 return EXIT_FAILURE;
         }
 
-        in_file = argv[1];
+        in_file = argv[optind];
         sub_load_image(&im, in_file);
         MAX_BOX_RADIUS = (MAX_BOX_DIAM = im.width / BOX_RADIUS_MAGIC_NUMBER) / 2;
         STACK = malloc(STACK_SIZE);
         PIXEL_STATES = malloc(STATE_SIZE);
-        *strrchr(in_file, '.') = '\0'; /* chop of ".png" from file name */
+        *strrchr(in_file, '.') = '\0'; /* chop off ".png" from file name */
+
+        crop.right = crop.bottom = 0;
+        crop.top = im.height;
+        crop.left = im.width;
 
         for (i = MAX_BOX_RADIUS; i < im.height - MAX_BOX_RADIUS; i += MAX_BOX_RADIUS/2) {
-                struct sub_box crop;
-                size_t top, bottom, y;
+                size_t y;
+                struct sub_box box;
 
-                crop.right = crop.bottom = 0;
-                crop.top = im.height;
-                crop.left = im.width;
+                box.right = box.bottom = 0;
+                box.top = im.height;
+                box.left = im.width;
+                if (!all_opt) {
+                        crop.right = crop.bottom = 0;
+                        crop.top = im.height;
+                        crop.left = im.width;
+                }
 
-                sub_scan_image(&im, &crop, i, DIR_RIGHT);
-                if (crop.right == 0)
+                sub_scan_image(&im, &box, i, DIR_RIGHT);
+                if (box.right == 0)
                         continue;
-                top = crop.top;
-                bottom = crop.bottom;
 
-                for (y = top; y < bottom; y += 5) {
+                for (y = box.top; y < box.bottom; y += 5) {
                         sub_scan_image(&im, &crop, y, DIR_RIGHT);
                         sub_scan_image(&im, &crop, y, DIR_LEFT);
                 }
@@ -475,10 +504,18 @@ int main(int argc, char **argv) {
                 if (im.width - crop.right > MAX_BOX_RADIUS)
                         crop.right += MAX_BOX_RADIUS;
 
-                sprintf(out_file, "%s.cropped.%d.png", in_file, count);
-                sub_save_image_cropped(&im, &crop, out_file);
+                if (!all_opt) {
+                        sprintf(out_file, "%s.cropped.%d.png", in_file, count);
+                        sub_save_image_cropped(&im, &crop, out_file);
+                }
+
                 i = crop.bottom;
                 count++;
+        }
+
+        if (all_opt) {
+                sprintf(out_file, "%s.cropped.png", in_file);
+                sub_save_image_cropped(&im, &crop, out_file);
         }
 
         sub_image_destroy(&im);
