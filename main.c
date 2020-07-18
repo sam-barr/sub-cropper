@@ -499,12 +499,15 @@ int main(int argc, char **argv) {
                         sub_scan_image(&im, &crop, y, DIR_LEFT);
                 }
 
-                if (crop.left > MAX_BOX_RADIUS)
-                        crop.left -= MAX_BOX_RADIUS;
-                if (im.width - crop.right > MAX_BOX_RADIUS)
-                        crop.right += MAX_BOX_RADIUS;
-
                 if (!all_opt) {
+                        if (crop.left > MAX_BOX_RADIUS)
+                                crop.left -= MAX_BOX_RADIUS;
+                        if (im.width - crop.right > MAX_BOX_RADIUS)
+                                crop.right += MAX_BOX_RADIUS;
+                        if (crop.top > MAX_BOX_RADIUS)
+                                crop.top -= MAX_BOX_RADIUS;
+                        if (im.height - crop.bottom > MAX_BOX_RADIUS)
+                                crop.bottom += MAX_BOX_RADIUS;
                         sprintf(out_file, "%s.cropped.%d.png", in_file, count);
                         sub_save_image_cropped(&im, &crop, out_file);
                 }
@@ -514,6 +517,14 @@ int main(int argc, char **argv) {
         }
 
         if (all_opt) {
+                if (crop.left > MAX_BOX_RADIUS)
+                        crop.left -= MAX_BOX_RADIUS;
+                if (im.width - crop.right > MAX_BOX_RADIUS)
+                        crop.right += MAX_BOX_RADIUS;
+                if (crop.top > MAX_BOX_RADIUS)
+                        crop.top -= MAX_BOX_RADIUS;
+                if (im.height - crop.bottom > MAX_BOX_RADIUS)
+                        crop.bottom += MAX_BOX_RADIUS;
                 sprintf(out_file, "%s.cropped.png", in_file);
                 sub_save_image_cropped(&im, &crop, out_file);
         }
