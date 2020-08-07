@@ -9,5 +9,6 @@ Build and install the executable with `make install`.
 
 ## Usage
 
-Running `sub-cropper foo.png` while (try) to find the subtitles in foo.png,
+Running `sub-cropper foo.png` will (try) to find the subtitles in foo.png,
 and write them to cropped_1.png, cropped_2.png, and so on.
+The `-a` flag will save all the found subtitles into a single png.

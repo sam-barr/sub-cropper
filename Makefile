@@ -1,6 +1,6 @@
 LIBS=libpng
 
-INSTALL_DIR=$(HOME)/.local/bin
+INSTALL_DIR=/usr/bin
 
 CFLAGS=-Wall -Wextra -Wpedantic -std=c90 -pedantic \
 	   $(shell for lib in $(LIBS); do pkg-config --cflags $$lib; done) \
